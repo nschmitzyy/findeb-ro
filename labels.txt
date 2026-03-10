@@ -1,2 +1,3 @@
-0 regnerisch
-1 gutes wetter
+0 flasche
+1 tshirt
+2 pullover
