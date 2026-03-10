@@ -17,8 +17,8 @@ st.set_page_config(
 )
 
 # Supabase-Konfiguration (ersetze mit deinen Zugangsdaten)
-SUPABASE_URL = "https://imntylvenimvnmocbtzy.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImltbnR5bHZlbmltdm5tb2NidHp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNTk4NzcsImV4cCI6MjA4ODYzNTg3N30.48pIBqUdlqXTooorJXHm71icVSj1wdTwW4tg5m2ovns"
+SUPABASE_URL="https://xbvffylpvjsdmjvwjaej.supabase.co"
+SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhidmZmeWxwdmpzZG1qdndqYWVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NTkwOTAsImV4cCI6MjA4ODAzNTA5MH0.w6LZuXWts9jrhuv7h6KlBgGZnEySJKNqzXGNJwU_gCU"
 
 # Initialisiere Supabase Client
 @st.cache_resource
