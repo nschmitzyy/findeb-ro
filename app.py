@@ -31,7 +31,7 @@ def load_keras_model():
     try:
         model = load_model("keras_model.h5", compile=False)
         class_names = open("labels.txt", "r").readlines()
-        return model, cls_names
+        return model, class_names
     except Exception as e:
         st.error(f"Fehler beim Laden des Modells: {e}")
         return None, None
@@ -60,7 +60,7 @@ def prepare_and_classify(image, model, class_names):
         prediction = model.predict(data, verbose=0)
         index = np.argmax(prediction)
         class_name = class_names[index].strip()
-        confidence_score = float(prediction[0]dex])
+        confidence_score = float(prediction[0][index])
 
         # Bereinige den Klassennamen (entferne Nummerierung)
         if ': ' in class_name:
