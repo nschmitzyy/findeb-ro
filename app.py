@@ -126,4 +126,61 @@ def main():
 
     available_classes = ["Alle"] + [line.split(': ')[1].strip() if ': ' in line else line.strip() for line in class_names]
 
-    tab1, tab2 = st.tabs(["📤 Fundstück melden",
+    tab1, tab2 = st.tabs(["📤 Fundstück melden", "🔎 Suchen"])
+
+    with tab1:
+        st.header("Neues Fundstück erfassen")
+        col1, col2 = st.columns(2)
+        with col1:
+            uploaded_file = st.file_uploader("Bild hochladen", type=["jpg", "png", "jpeg"])
+            if uploaded_file:
+                image = Image.open(uploaded_file)
+                st.image(image, use_column_width=True)
+
+        with col2:
+            if uploaded_file and st.button("🔍 KI-Analyse", type="primary"):
+                with st.spinner("Analysiere..."):
+                    c_name, conf, _ = prepare_and_classify(image, model, class_names)
+                    st.session_state.detected = {"name": c_name, "conf": conf, "img": image}
+                    st.success(f"Erkannt: {c_name} ({conf:.1%})")
+
+            if 'detected' in st.session_state:
+                with st.form("fund_form"):
+                    desc = st.text_area("Beschreibung")
+                    tags = st.text_input("Tags (z.B. rot, metall, klein)", help="Mit Kommas trennen")
+                    loc = st.text_input("Fundort")
+                    finder = st.text_input("Finder Name")
+                    
+                    if st.form_submit_button("📦 Speichern"):
+                        if desc and loc:
+                            success, _ = save_to_supabase(supabase, st.session_state.detected['img'], 
+                                                        st.session_state.detected['name'], 
+                                                        st.session_state.detected['conf'], 
+                                                        desc, loc, finder or "Anonym", tags)
+                            if success:
+                                st.success("Gespeichert!")
+                                del st.session_state.detected
+                                st.rerun()
+
+    with tab2:
+        st.header("Datenbank durchsuchen")
+        c1, c2 = st.columns([2, 1])
+        with c1: s_term = st.text_input("Suche (Beschreibung oder Tags)", placeholder="z.B. blau, Schlüssel...")
+        with c2: f_class = st.selectbox("Kategorie", available_classes)
+
+        items = get_fundstuecke(supabase, f_class, s_term)
+        
+        cols = st.columns(3)
+        for i, item in enumerate(items):
+            with cols[i % 3]:
+                with st.container(border=True):
+                    if item.get('image_url'): st.image(item['image_url'])
+                    st.subheader(item['class_name'])
+                    st.write(f"**Info:** {item['description']}")
+                    if item.get('tags'):
+                        st.caption(f"🏷️ Tags: {item['tags']}")
+                    st.write(f"📍 {item['location']}")
+                    st.progress(item['confidence_score'])
+
+if __name__ == "__main__":
+    main()
