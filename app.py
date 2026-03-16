@@ -10,56 +10,45 @@ import datetime
 
 # --- KONFIGURATION ---
 SUPABASE_URL = "https://xbvffylpvjsdmjvwjaej.supabase.co"
-SUPABASE_KEY = "DEIN_KEY_HIER_EINTRAGEN" 
+SUPABASE_KEY = "DEIN_SUPABASE_KEY" # Bitte hier deinen Key einfügen
 
 # --- SEITENKONFIGURATION ---
-st.set_page_config(page_title="Fundbüro - Deep Black", page_icon="🔍", layout="wide")
+st.set_page_config(page_title="KI-Fundbüro Black", page_icon="🔍", layout="wide")
 
-# --- DEEP BLACK CSS ---
-# Dies erzwingt, dass alles Weiße schwarz wird und die Sidebar ebenfalls schwarz ist.
+# --- DEEP BLACK & WHITE TEXT CSS ---
 st.markdown("""
     <style>
-    /* Hintergrund der gesamten App */
-    .stApp, [data-testid="stAppViewContainer"] {
+    /* Hintergrund & Sidebar auf Tiefschwarz */
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stSidebarContent"] {
         background-color: #000000 !important;
-        color: #FFFFFF !important;
     }
     
-    /* Die linke Sidebar */
-    [data-testid="stSidebar"], [data-testid="stSidebarContent"] {
-        background-color: #000000 !important;
-        border-right: 1px solid #333333;
+    /* ALLE Texte auf Reinweiß */
+    h1, h2, h3, h4, h5, h6, p, span, label, li, .stMarkdown, [data-testid="stWidgetLabel"] p {
+        color: #FFFFFF !important;
     }
 
-    /* Texte in Weiß erzwingen */
-    h1, h2, h3, p, span, label, .stMarkdown {
-        color: #FFFFFF !important;
+    /* Sidebar Trennlinie */
+    [data-testid="stSidebar"] {
+        border-right: 1px solid #333333;
     }
 
     /* Eingabefelder abdunkeln */
     .stTextInput>div>div>input, .stTextArea>div>div>textarea, .stSelectbox>div>div {
-        background-color: #1A1A1A !important;
+        background-color: #111111 !important;
         color: #FFFFFF !important;
         border: 1px solid #444444 !important;
     }
 
-    /* Tabs-Leiste */
-    .stTabs [data-baseweb="tab-list"] {
-        background-color: #000000 !important;
-    }
-    .stTabs [data-baseweb="tab"] {
-        color: #888888 !important;
-    }
-    .stTabs [aria-selected="true"] {
-        color: #FFFFFF !important;
-        border-bottom-color: #FFFFFF !important;
-    }
+    /* Tabs (Reiter) */
+    .stTabs [data-baseweb="tab-list"] { background-color: #000000 !important; }
+    .stTabs [data-baseweb="tab"] { color: #888888 !important; }
+    .stTabs [aria-selected="true"] p { color: #FFFFFF !important; }
 
-    /* Container für Fundstücke */
+    /* Container Boxen */
     [data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #0c0c0c !important;
+        background-color: #080808 !important;
         border: 1px solid #333333 !important;
-        border-radius: 10px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -91,82 +80,102 @@ def prepare_and_classify(image, model, class_names):
     if ': ' in name: name = name.split(': ')[1]
     return name, float(prediction[0][idx])
 
-# --- MAIN APP ---
+# --- APP LOGIK ---
 def main():
-    st.title("🔍 KI-Fundbüro (Deep Black Edition)")
+    st.title("🔍 KI-Fundbüro")
     supabase = init_supabase()
     model, class_names = load_keras_model()
 
     if model is None:
-        st.error("Modell-Dateien fehlen!")
+        st.error("Modell-Dateien nicht gefunden!")
         return
 
     tab1, tab2 = st.tabs(["📤 Fund melden", "🔎 Suchen"])
 
     with tab1:
+        st.header("Neues Fundstück erfassen")
         uploaded_file = st.file_uploader("Bild hochladen", type=["jpg", "png", "jpeg"])
+        
         if uploaded_file:
             img = Image.open(uploaded_file)
-            st.image(img, width=300)
+            st.image(img, width=350)
             
-            if st.button("🔍 Analysieren", type="primary"):
+            if st.button("🔍 KI-Analyse starten", type="primary"):
                 name, conf = prepare_and_classify(img, model, class_names)
                 st.session_state.detected = {"name": name, "conf": conf, "img": img}
             
             if 'detected' in st.session_state:
-                st.success(f"Erkannt: {st.session_state.detected['name']}")
+                st.success(f"Erkannt: {st.session_state.detected['name']} ({st.session_state.detected['conf']:.1%})")
                 
                 with st.form("save_form"):
-                    desc = st.text_area("Beschreibung")
-                    tags = st.text_input("Tags (z.B. blau, metall, verkratzt)")
+                    desc = st.text_area("Beschreibung (Farbe, Zustand, Marke)")
+                    tags = st.text_input("Tags / Merkmale", placeholder="z.B. blau, verkratzt, Leder")
                     loc = st.text_input("Fundort")
                     
                     if st.form_submit_button("📦 In Datenbank speichern"):
-                        # BILD UPLOAD & DB INSERT
-                        img_byte_arr = io.BytesIO()
-                        st.session_state.detected['img'].save(img_byte_arr, format='PNG')
-                        
-                        path = f"fundstuecke/{datetime.datetime.now().timestamp()}.png"
-                        supabase.storage.from_("fundbuero-bilder").upload(path, img_byte_arr.getvalue())
-                        url = f"{SUPABASE_URL}/storage/v1/object/public/fundbuero-bilder/{path}"
+                        try:
+                            # Bild-Upload
+                            img_io = io.BytesIO()
+                            st.session_state.detected['img'].save(img_io, format='PNG')
+                            file_name = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                            
+                            supabase.storage.from_("fundstuecke").upload(
+                                path=file_name,
+                                file=img_io.getvalue(),
+                                file_options={"content-type": "image/png"}
+                            )
+                            
+                            # URL generieren
+                            image_url = supabase.storage.from_("fundstuecke").get_public_url(file_name)
 
-                        # HIER lag der Fehler: 'tags' muss in Supabase existieren!
-                        data = {
-                            "class_name": st.session_state.detected['name'],
-                            "confidence_score": st.session_state.detected['conf'],
-                            "description": desc,
-                            "location": loc,
-                            "tags": tags.lower(),
-                            "image_url": url,
-                            "status": "gemeldet"
-                        }
-                        supabase.table("fundstuecke").insert(data).execute()
-                        st.balloons()
-                        st.success("Erfolgreich gespeichert!")
-                        del st.session_state.detected
+                            # DB Eintrag
+                            data = {
+                                "class_name": st.session_state.detected['name'],
+                                "description": desc,
+                                "location": loc,
+                                "tags": tags.lower(),
+                                "image_url": image_url,
+                                "status": "gemeldet"
+                            }
+                            supabase.table("fundstuecke").insert(data).execute()
+                            
+                            st.balloons()
+                            st.success("Erfolgreich gespeichert!")
+                            del st.session_state.detected
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Fehler: {e}")
 
     with tab2:
-        search = st.text_input("Suche nach Merkmalen oder Tags", placeholder="z.B. rot...")
+        st.header("Fundstücke durchsuchen")
+        search_query = st.text_input("Suche nach Kategorien, Farben oder Tags", placeholder="z.B. rot...")
         
-        # Alle Daten holen
-        query = supabase.table("fundstuecke").select("*").execute()
-        items = query.data
-        
-        # Filterung
-        if search:
-            s = search.lower()
-            items = [i for i in items if s in (i.get('description') or "").lower() or s in (i.get('tags') or "").lower()]
+        try:
+            res = supabase.table("fundstuecke").select("*").order("created_at", desc=True).execute()
+            items = res.data
+        except:
+            items = []
 
-        # Anzeige
-        cols = st.columns(3)
-        for i, item in enumerate(items):
-            with cols[i % 3]:
-                with st.container(border=True):
-                    st.image(item['image_url'])
-                    st.subheader(item['class_name'])
-                    if item.get('tags'):
-                        st.markdown(f"🏷️ `{item['tags']}`")
-                    st.write(f"📍 {item['location']}")
+        if search_query:
+            q = search_query.lower()
+            items = [i for i in items if q in (i.get('description') or "").lower() 
+                     or q in (i.get('tags') or "").lower() 
+                     or q in (i.get('class_name') or "").lower()]
+
+        if items:
+            cols = st.columns(3)
+            for idx, item in enumerate(items):
+                with cols[idx % 3]:
+                    with st.container(border=True):
+                        st.image(item['image_url'])
+                        st.subheader(item['class_name'])
+                        if item.get('tags'):
+                            st.markdown(f"🏷️ `{item['tags']}`")
+                        st.write(f"**Beschreibung:** {item['description']}")
+                        st.write(f"**Ort:** {item['location']}")
+                        st.caption(f"Datum: {item.get('created_at', '')[:10]}")
+        else:
+            st.info("Keine Einträge gefunden.")
 
 if __name__ == "__main__":
     main()
