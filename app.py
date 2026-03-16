@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
-from tensorflow import keras
-from tensorflow.keras.models import load_model
-from PIL import Image, ImageOps
+from ultralytics import YOLO  # NEU: YOLO statt TensorFlow
+from PIL import Image
 import numpy as np
 import io
 from supabase import create_client, Client
@@ -10,42 +9,29 @@ import datetime
 
 # --- KONFIGURATION ---
 SUPABASE_URL = "https://xbvffylpvjsdmjvwjaej.supabase.co"
-SUPABASE_KEY = "DEIN_SUPABASE_KEY" # Bitte hier deinen Key einfügen
+SUPABASE_KEY = "DEIN_SUPABASE_KEY" 
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(page_title="KI-Fundbüro Black", page_icon="🔍", layout="wide")
 
-# --- DEEP BLACK & WHITE TEXT CSS ---
+# --- DEEP BLACK & WHITE TEXT CSS (Unverändert) ---
 st.markdown("""
     <style>
-    /* Hintergrund & Sidebar auf Tiefschwarz */
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stSidebarContent"] {
         background-color: #000000 !important;
     }
-    
-    /* ALLE Texte auf Reinweiß */
     h1, h2, h3, h4, h5, h6, p, span, label, li, .stMarkdown, [data-testid="stWidgetLabel"] p {
         color: #FFFFFF !important;
     }
-
-    /* Sidebar Trennlinie */
-    [data-testid="stSidebar"] {
-        border-right: 1px solid #333333;
-    }
-
-    /* Eingabefelder abdunkeln */
+    [data-testid="stSidebar"] { border-right: 1px solid #333333; }
     .stTextInput>div>div>input, .stTextArea>div>div>textarea, .stSelectbox>div>div {
         background-color: #111111 !important;
         color: #FFFFFF !important;
         border: 1px solid #444444 !important;
     }
-
-    /* Tabs (Reiter) */
     .stTabs [data-baseweb="tab-list"] { background-color: #000000 !important; }
     .stTabs [data-baseweb="tab"] { color: #888888 !important; }
     .stTabs [aria-selected="true"] p { color: #FFFFFF !important; }
-
-    /* Container Boxen */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background-color: #080808 !important;
         border: 1px solid #333333 !important;
@@ -59,36 +45,31 @@ def init_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 @st.cache_resource
-def load_keras_model():
-    try:
-        model = load_model("keras_model.h5", compile=False)
-        with open("labels.txt", "r") as f:
-            class_names = f.readlines()
-        return model, class_names
-    except:
-        return None, None
+def load_yolo_model():
+    # Lädt das YOLOv8 Nano Modell (schnell und leicht)
+    # Du kannst auch 'best.pt' nutzen, falls du ein eigenes trainiert hast
+    model = YOLO('yolov8n.pt') 
+    return model
 
-def prepare_and_classify(image, model, class_names):
-    image = image.convert("RGB")
-    image = ImageOps.fit(image, (224, 224), Image.Resampling.LANCZOS)
-    img_array = (np.asarray(image).astype(np.float32) / 127.5) - 1
-    data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
-    data[0] = img_array
-    prediction = model.predict(data, verbose=0)
-    idx = np.argmax(prediction)
-    name = class_names[idx].strip()
-    if ': ' in name: name = name.split(': ')[1]
-    return name, float(prediction[0][idx])
+def classify_with_yolo(image, model):
+    # YOLO braucht keine manuelle Skalierung auf 224x224
+    results = model(image)
+    
+    # Wir nehmen das erste erkannte Objekt mit der höchsten Konfidenz
+    if len(results[0].boxes) > 0:
+        box = results[0].boxes[0]
+        class_id = int(box.cls[0])
+        name = model.names[class_id]
+        conf = float(box.conf[0])
+        return name, conf
+    else:
+        return "Unbekannt", 0.0
 
 # --- APP LOGIK ---
 def main():
     st.title("🔍 KI-Fundbüro")
     supabase = init_supabase()
-    model, class_names = load_keras_model()
-
-    if model is None:
-        st.error("Modell-Dateien nicht gefunden!")
-        return
+    model = load_yolo_model()
 
     tab1, tab2 = st.tabs(["📤 Fund melden", "🔎 Suchen"])
 
@@ -101,7 +82,7 @@ def main():
             st.image(img, width=350)
             
             if st.button("🔍 KI-Analyse starten", type="primary"):
-                name, conf = prepare_and_classify(img, model, class_names)
+                name, conf = classify_with_yolo(img, model)
                 st.session_state.detected = {"name": name, "conf": conf, "img": img}
             
             if 'detected' in st.session_state:
@@ -114,18 +95,18 @@ def main():
                     
                     if st.form_submit_button("📦 In Datenbank speichern"):
                         try:
-                            # Bild-Upload
+                            # Bild-Vorbereitung
                             img_io = io.BytesIO()
                             st.session_state.detected['img'].save(img_io, format='PNG')
                             file_name = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
                             
+                            # Supabase Storage Upload
                             supabase.storage.from_("fundstuecke").upload(
                                 path=file_name,
                                 file=img_io.getvalue(),
                                 file_options={"content-type": "image/png"}
                             )
                             
-                            # URL generieren
                             image_url = supabase.storage.from_("fundstuecke").get_public_url(file_name)
 
                             # DB Eintrag
